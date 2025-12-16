@@ -174,20 +174,22 @@ class ChristmasTree:
                                           xoff=float(self.center_x * SCALE_FACTOR),
                                           yoff=float(self.center_y * SCALE_FACTOR))
 
-def cost_function(x, placed_trees):
+def constrained_objective(x, placed_trees):
     tree_to_place = ChristmasTree(x[0], x[1], x[2]*180/math.pi)
-    if (overlap_present(placed_trees.trees, tree_to_place) == True):
-        return 1e9
+    return(objective(placed_trees, tree_to_place) + overlap_constraint(placed_trees, tree_to_place))
+
+def objective(placed_trees, tree_to_place):
     return(get_side_length(placed_trees.trees, tree_to_place)**2)
 
-def overlap_present(placed_trees, tree_to_place):
-    placed_polygons = [p.polygon for p in placed_trees]
-    candidate_poly = tree_to_place.polygon
+def overlap_constraint(placed_trees, tree_to_place):
+    rescale_value = 1.01
+    placed_polygons = [affinity.scale(p.polygon, rescale_value, rescale_value, origin=p.polygon.centroid) for p in placed_trees]
+    candidate_poly = affinity.scale(tree_to_place.polygon, rescale_value, rescale_value, origin=tree_to_place.polygon.centroid)
     tree_index = STRtree(placed_polygons)
     possible_indices = tree_index.query(candidate_poly)
     if any((candidate_poly.intersects(placed_polygons[i]) and not candidate_poly.touches(placed_polygons[i])) for i in possible_indices):
-        return(True)
-    return(False)
+        return(1e9)
+    return(0)
 
 def get_side_length(trees, tree):
         all_polygons = [t.polygon for t in trees]

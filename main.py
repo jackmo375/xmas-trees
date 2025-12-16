@@ -8,15 +8,16 @@ from functools import partial
 
 def main():
 
-    N_trees = 5
+    N_trees = 20
     N_tries = 3
     radius = 20.0
     sigma0 = 3
 
     placed_trees = xt.ChristmasTrees(trees=[xt.ChristmasTree(0,0,45)])
     placed_trees.get_solution().to_csv(f"results/{placed_trees.size}-tree-configuration.csv")
+    placed_trees.save_config_to_pdf(f"results/{placed_trees.size}-tree-configuration.pdf")
 
-    objective_for_cma = partial(xt.cost_function, placed_trees=placed_trees)
+    objective_for_cma = partial(xt.constrained_objective, placed_trees=placed_trees)
 
     for i in range(N_trees-1):
         best_x = None
@@ -31,12 +32,11 @@ def main():
                 best_cost_value = objective_for_cma(x)
                 best_x = x
         print(i)
+        print(best_x)
         print(objective_for_cma(best_x))
         placed_trees.append_tree(xt.ChristmasTree(best_x[0],best_x[1],best_x[2]*180/math.pi))
         placed_trees.get_solution().to_csv(f"results/{placed_trees.size}-tree-configuration.csv")
-
-    placed_trees.save_config_to_pdf(f"results/{placed_trees.size}-tree-configuration.pdf")
-    # placed_trees.get_solution().to_csv(f"results/{N_trees}-tree-configuration.csv")
+        placed_trees.save_config_to_pdf(f"results/{placed_trees.size}-tree-configuration.pdf")
 
 
 if __name__ == "__main__":

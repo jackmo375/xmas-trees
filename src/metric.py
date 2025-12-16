@@ -19,7 +19,6 @@ from shapely.strtree import STRtree
 getcontext().prec = 25
 scale_factor = Decimal('1e18')
 
-
 class ParticipantVisibleError(Exception):
     pass
 
@@ -148,4 +147,3 @@ def score(solution: pd.DataFrame, submission: pd.DataFrame, row_id_column_name: 
         total_score += group_score
 
     return float(total_score)
-
