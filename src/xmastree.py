@@ -1,6 +1,7 @@
 import math
 import os
 import random
+import copy
 
 import matplotlib
 matplotlib.use('Qt5Agg') 
@@ -17,51 +18,84 @@ from shapely.strtree import STRtree
 
 from decimal import Decimal, getcontext
 
+import optimization as op
+
+
+
 pd.set_option('display.float_format', '{:.12f}'.format)
 getcontext().prec = 25
 SCALE_FACTOR = Decimal('1e15')
 
 class ChristmasTrees:
-	def __init__(self, num_trees):
-		self.size = num_trees
-		self.trees = initialize_trees(num_trees, existing_trees=None)
+    # def __init__(self, num_trees):
+    #     self.size = num_trees
+    #     self.trees = initialize_trees(num_trees, existing_trees=None)
+    def __init__(self, trees):
+        self.trees = trees
+        self.size = len(trees)
 
-	def __iter__(self):
-		return iter(self.trees)
+    def __iter__(self):
+        return iter(self.trees)
 
-	def get_side_length(self):
-		all_polygons = [t.polygon for t in self.trees]
-		bounds = unary_union(all_polygons).bounds
+    def append_tree(self,tree):
+        self.trees.append(tree)
+        self.size = self.size + 1
 
-		minx = Decimal(bounds[0]) / SCALE_FACTOR
-		miny = Decimal(bounds[1]) / SCALE_FACTOR
-		maxx = Decimal(bounds[2]) / SCALE_FACTOR
-		maxy = Decimal(bounds[3]) / SCALE_FACTOR
+    def get_side_length(self):
+        all_polygons = [t.polygon for t in self.trees]
+        bounds = unary_union(all_polygons).bounds
 
-		width = maxx - minx
-		height = maxy - miny
-		# this forces a square bounding using the largest side
-		return(max(width, height))
+        minx = Decimal(bounds[0]) / SCALE_FACTOR
+        miny = Decimal(bounds[1]) / SCALE_FACTOR
+        maxx = Decimal(bounds[2]) / SCALE_FACTOR
+        maxy = Decimal(bounds[3]) / SCALE_FACTOR
 
-	def plot(self):
-		plot_results(self.get_side_length(), self.trees, self.size)
+        width = maxx - minx
+        height = maxy - miny
+        # this forces a square bounding using the largest side
+        return(max(width, height))
 
-	def get_solution(self):
-		tree_data = []
-		index = [f'{self.size:03d}_{t}' for t in range(self.size)]
-		for tree in self.trees:
-			tree_data.append([tree.center_x, tree.center_y, tree.angle])
-		cols = ['x', 'y', 'deg']
-		submission = pd.DataFrame(
-			index=index, 
-			columns=cols, 
-			data=tree_data).rename_axis('id')
-		for col in cols:
-			submission[col] = submission[col].astype(float).round(decimals=6)
-		for col in submission.columns:
-			submission[col] = 's' + submission[col].astype('string')
-		return(submission)
+    def overlap_present(self):
+        placed_polygons = [p.polygon for p in self.trees]
+        while (placed_polygons):
+            candidate_poly = placed_polygons.pop(0)
+            tree_index = STRtree(placed_polygons)
+            possible_indices = tree_index.query(candidate_poly)
+            if any((candidate_poly.intersects(placed_polygons[i]) and not candidate_poly.touches(placed_polygons[i])) for i in possible_indices):
+                return(True)
+        return(False)
 
+    def plot(self):
+        plot_results(self.get_side_length(), self.trees, self.size)
+
+    def get_solution(self):
+        tree_data = []
+        index = [f'{self.size:03d}_{t}' for t in range(self.size)]
+        for tree in self.trees:
+            tree_data.append([tree.center_x, tree.center_y, tree.angle])
+        cols = ['x', 'y', 'deg']
+        submission = pd.DataFrame(
+            index=index, 
+            columns=cols, 
+            data=tree_data).rename_axis('id')
+        for col in cols:
+            submission[col] = submission[col].astype(float).round(decimals=6)
+        for col in submission.columns:
+            submission[col] = 's' + submission[col].astype('string')
+        return(submission)
+
+
+def get_side_length(trees, tree):
+        all_polygons = [t.polygon for t in trees].append(tree.polygon)
+        bounds = unary_union(all_polygons).bounds
+        minx = Decimal(bounds[0]) / SCALE_FACTOR
+        miny = Decimal(bounds[1]) / SCALE_FACTOR
+        maxx = Decimal(bounds[2]) / SCALE_FACTOR
+        maxy = Decimal(bounds[3]) / SCALE_FACTOR
+        width = maxx - minx
+        height = maxy - miny
+        # this forces a square bounding using the largest side
+        return(max(width, height))
 
 class ChristmasTree:
     """Represents a single, rotatable Christmas tree of a fixed size."""
@@ -115,6 +149,7 @@ class ChristmasTree:
         self.polygon = affinity.translate(rotated,
                                           xoff=float(self.center_x * SCALE_FACTOR),
                                           yoff=float(self.center_y * SCALE_FACTOR))
+
 
 def generate_weighted_angle():
     """
