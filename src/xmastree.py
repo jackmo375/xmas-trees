@@ -1,25 +1,16 @@
 import math
-import os
 import random
-import copy
-
 import matplotlib
 matplotlib.use('Qt5Agg') 
 import matplotlib.pyplot as plt
-
 import numpy as np
 import pandas as pd
 from matplotlib.patches import Rectangle
-# from shapely import affinity, touches
 from shapely import affinity
 from shapely.geometry import Polygon
 from shapely.ops import unary_union
 from shapely.strtree import STRtree
-
 from decimal import Decimal, getcontext
-
-import optimization as op
-
 
 
 pd.set_option('display.float_format', '{:.12f}'.format)
@@ -55,18 +46,64 @@ class ChristmasTrees:
         # this forces a square bounding using the largest side
         return(max(width, height))
 
-    def overlap_present(self):
-        placed_polygons = [p.polygon for p in self.trees]
-        while (placed_polygons):
-            candidate_poly = placed_polygons.pop(0)
-            tree_index = STRtree(placed_polygons)
-            possible_indices = tree_index.query(candidate_poly)
-            if any((candidate_poly.intersects(placed_polygons[i]) and not candidate_poly.touches(placed_polygons[i])) for i in possible_indices):
-                return(True)
-        return(False)
+    def get_configuration_plot(self):
+        """Plots the arrangement of trees and the bounding square."""
+        _, ax = plt.subplots(figsize=(6, 6))
+        colors = plt.cm.viridis([i / self.size for i in range(self.size)])
+
+        all_polygons = [t.polygon for t in self.trees]
+        bounds = unary_union(all_polygons).bounds
+
+        for i, tree in enumerate(self.trees):
+            # Rescale for plotting
+            x_scaled, y_scaled = tree.polygon.exterior.xy
+            x = [Decimal(val) / SCALE_FACTOR for val in x_scaled]
+            y = [Decimal(val) / SCALE_FACTOR for val in y_scaled]
+            ax.plot(x, y, color=colors[i])
+            ax.fill(x, y, alpha=0.5, color=colors[i])
+
+        minx = Decimal(bounds[0]) / SCALE_FACTOR
+        miny = Decimal(bounds[1]) / SCALE_FACTOR
+        maxx = Decimal(bounds[2]) / SCALE_FACTOR
+        maxy = Decimal(bounds[3]) / SCALE_FACTOR
+
+        width = maxx - minx
+        height = maxy - miny
+
+        side_length = self.get_side_length()
+
+        square_x = minx if width >= height else minx - (side_length - width) / 2
+        square_y = miny if height >= width else miny - (side_length - height) / 2
+        bounding_square = Rectangle(
+            (float(square_x), float(square_y)),
+            float(side_length),
+            float(side_length),
+            fill=False,
+            edgecolor='red',
+            linewidth=2,
+            linestyle='--',
+        )
+        ax.add_patch(bounding_square)
+
+        padding = 0.5
+        ax.set_xlim(
+            float(square_x - Decimal(str(padding))),
+            float(square_x + side_length + Decimal(str(padding))))
+        ax.set_ylim(float(square_y - Decimal(str(padding))),
+                    float(square_y + side_length + Decimal(str(padding))))
+        ax.set_aspect('equal', adjustable='box')
+        ax.axis('off')
+        plt.title(f'{self.size} Trees: {side_length:.12f}')
+        return(plt)
 
     def plot(self):
-        plot_results(self.get_side_length(), self.trees, self.size)
+        plt = self.get_configuration_plot()
+        plt.show()
+        plt.close()
+
+    def save_config_to_pdf(self, filename):
+        plt = self.get_configuration_plot()
+        plt.savefig(filename)
 
     def get_solution(self):
         tree_data = []
@@ -83,19 +120,6 @@ class ChristmasTrees:
         for col in submission.columns:
             submission[col] = 's' + submission[col].astype('string')
         return(submission)
-
-
-def get_side_length(trees, tree):
-        all_polygons = [t.polygon for t in trees].append(tree.polygon)
-        bounds = unary_union(all_polygons).bounds
-        minx = Decimal(bounds[0]) / SCALE_FACTOR
-        miny = Decimal(bounds[1]) / SCALE_FACTOR
-        maxx = Decimal(bounds[2]) / SCALE_FACTOR
-        maxy = Decimal(bounds[3]) / SCALE_FACTOR
-        width = maxx - minx
-        height = maxy - miny
-        # this forces a square bounding using the largest side
-        return(max(width, height))
 
 class ChristmasTree:
     """Represents a single, rotatable Christmas tree of a fixed size."""
@@ -150,6 +174,33 @@ class ChristmasTree:
                                           xoff=float(self.center_x * SCALE_FACTOR),
                                           yoff=float(self.center_y * SCALE_FACTOR))
 
+def cost_function(x, placed_trees):
+    tree_to_place = ChristmasTree(x[0], x[1], x[2]*180/math.pi)
+    if (overlap_present(placed_trees.trees, tree_to_place) == True):
+        return 1e9
+    return(get_side_length(placed_trees.trees, tree_to_place)**2)
+
+def overlap_present(placed_trees, tree_to_place):
+    placed_polygons = [p.polygon for p in placed_trees]
+    candidate_poly = tree_to_place.polygon
+    tree_index = STRtree(placed_polygons)
+    possible_indices = tree_index.query(candidate_poly)
+    if any((candidate_poly.intersects(placed_polygons[i]) and not candidate_poly.touches(placed_polygons[i])) for i in possible_indices):
+        return(True)
+    return(False)
+
+def get_side_length(trees, tree):
+        all_polygons = [t.polygon for t in trees]
+        all_polygons.append(tree.polygon)
+        bounds = unary_union(all_polygons).bounds
+        minx = bounds[0] / 1e15
+        miny = bounds[1] / 1e15
+        maxx = bounds[2] / 1e15
+        maxy = bounds[3] / 1e15
+        width = maxx - minx
+        height = maxy - miny
+        # this forces a square bounding using the largest side
+        return(float(max(width, height)))
 
 def generate_weighted_angle():
     """
@@ -160,160 +211,3 @@ def generate_weighted_angle():
         angle = random.uniform(0, 2 * math.pi)
         if random.uniform(0, 1) < abs(math.sin(2 * angle)):
             return angle
-
-def initialize_trees(num_trees, existing_trees=None):
-    """
-    This builds a simple, greedy starting configuration, by using the previous n-tree
-    placements, and adding more tree for the (n+1)-tree configuration. We place a tree
-    fairly far away at a (weighted) random angle, and the bring it closer to the center
-    until it overlaps. Then we back it up until it no longer overlaps.
-
-    You can easily modify this code to build each n-tree configuration completely
-    from scratch.
-    """
-    if num_trees == 0:
-        return [], Decimal('0')
-
-    if existing_trees is None:
-        placed_trees = []
-    else:
-        placed_trees = list(existing_trees)
-
-    num_to_add = num_trees - len(placed_trees)
-
-    if num_to_add > 0:
-        unplaced_trees = [
-            ChristmasTree(angle=random.uniform(0, 360)) for _ in range(num_to_add)]
-        if not placed_trees:  # Only place the first tree at origin if starting from scratch
-            placed_trees.append(unplaced_trees.pop(0))
-
-        for tree_to_place in unplaced_trees:
-            placed_polygons = [p.polygon for p in placed_trees]
-            tree_index = STRtree(placed_polygons)
-
-            best_px = None
-            best_py = None
-            min_radius = Decimal('Infinity')
-
-            # This loop tries 10 random starting attempts and keeps the best one
-            for _ in range(10):
-                # The new tree starts at a position 20 from the center, at a random vector angle.
-                angle = generate_weighted_angle()
-                vx = Decimal(str(math.cos(angle)))
-                vy = Decimal(str(math.sin(angle)))
-
-                # Move towards center along the vector in steps of 0.5 until collision
-                radius = Decimal('20.0')
-                step_in = Decimal('0.5')
-
-                collision_found = False
-                while radius >= 0:
-                    px = radius * vx
-                    py = radius * vy
-
-                    candidate_poly = affinity.translate(
-                        tree_to_place.polygon,
-                        xoff=float(px * SCALE_FACTOR),
-                        yoff=float(py * SCALE_FACTOR))
-
-                    # Looking for nearby objects
-                    possible_indices = tree_index.query(candidate_poly)
-                    # This is the collision detection step
-                    if any((candidate_poly.intersects(placed_polygons[i]) and not
-                            candidate_poly.touches(placed_polygons[i]))
-                           for i in possible_indices):
-                        collision_found = True
-                        break
-                    radius -= step_in
-
-                # back up in steps of 0.05 until it no longer has a collision.
-                if collision_found:
-                    step_out = Decimal('0.05')
-                    while True:
-                        radius += step_out
-                        px = radius * vx
-                        py = radius * vy
-
-                        candidate_poly = affinity.translate(
-                            tree_to_place.polygon,
-                            xoff=float(px * SCALE_FACTOR),
-                            yoff=float(py * SCALE_FACTOR))
-
-                        possible_indices = tree_index.query(candidate_poly)
-                        if not any((candidate_poly.intersects(placed_polygons[i]) and not
-                                   candidate_poly.touches(placed_polygons[i]))
-                                   for i in possible_indices):
-                            break
-                else:
-                    # No collision found even at the center. Place it at the center.
-                    radius = Decimal('0')
-                    px = Decimal('0')
-                    py = Decimal('0')
-
-                if radius < min_radius:
-                    min_radius = radius
-                    best_px = px
-                    best_py = py
-
-            tree_to_place.center_x = best_px
-            tree_to_place.center_y = best_py
-            tree_to_place.polygon = affinity.translate(
-                tree_to_place.polygon,
-                xoff=float(tree_to_place.center_x * SCALE_FACTOR),
-                yoff=float(tree_to_place.center_y * SCALE_FACTOR),
-            )
-            placed_trees.append(tree_to_place)  # Add the newly placed tree to the list
-
-    return placed_trees
-
-
-def plot_results(side_length, placed_trees, num_trees):
-    """Plots the arrangement of trees and the bounding square."""
-    _, ax = plt.subplots(figsize=(6, 6))
-    colors = plt.cm.viridis([i / num_trees for i in range(num_trees)])
-
-    all_polygons = [t.polygon for t in placed_trees]
-    bounds = unary_union(all_polygons).bounds
-
-    for i, tree in enumerate(placed_trees):
-        # Rescale for plotting
-        x_scaled, y_scaled = tree.polygon.exterior.xy
-        x = [Decimal(val) / SCALE_FACTOR for val in x_scaled]
-        y = [Decimal(val) / SCALE_FACTOR for val in y_scaled]
-        ax.plot(x, y, color=colors[i])
-        ax.fill(x, y, alpha=0.5, color=colors[i])
-
-    minx = Decimal(bounds[0]) / SCALE_FACTOR
-    miny = Decimal(bounds[1]) / SCALE_FACTOR
-    maxx = Decimal(bounds[2]) / SCALE_FACTOR
-    maxy = Decimal(bounds[3]) / SCALE_FACTOR
-
-    width = maxx - minx
-    height = maxy - miny
-
-    square_x = minx if width >= height else minx - (side_length - width) / 2
-    square_y = miny if height >= width else miny - (side_length - height) / 2
-    bounding_square = Rectangle(
-        (float(square_x), float(square_y)),
-        float(side_length),
-        float(side_length),
-        fill=False,
-        edgecolor='red',
-        linewidth=2,
-        linestyle='--',
-    )
-    ax.add_patch(bounding_square)
-
-    padding = 0.5
-    ax.set_xlim(
-        float(square_x - Decimal(str(padding))),
-        float(square_x + side_length + Decimal(str(padding))))
-    ax.set_ylim(float(square_y - Decimal(str(padding))),
-                float(square_y + side_length + Decimal(str(padding))))
-    ax.set_aspect('equal', adjustable='box')
-    ax.axis('off')
-    plt.title(f'{num_trees} Trees: {side_length:.12f}')
-    plt.show()
-    plt.close()
-
-
