@@ -104,6 +104,7 @@ class ChristmasTrees:
     def save_config_to_pdf(self, filename):
         plt = self.get_configuration_plot()
         plt.savefig(filename)
+        plt.close()
 
     def get_solution(self):
         tree_data = []

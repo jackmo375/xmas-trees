@@ -4,6 +4,7 @@ from src import xmastree as xt
 import cma
 import math
 import random
+import pandas as pd
 from functools import partial
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
@@ -16,7 +17,7 @@ def main():
 
     placed_trees = xt.ChristmasTrees(trees=[xt.ChristmasTree(0,0,45)])
     placed_trees.get_solution().to_csv(f"results/{placed_trees.size}-tree-configuration.csv")
-    placed_trees.save_config_to_pdf(f"results/{placed_trees.size}-tree-configuration.pdf")
+    # placed_trees.save_config_to_pdf(f"results/{placed_trees.size}-tree-configuration.pdf")
 
     objective_for_cma = partial(xt.constrained_objective, placed_trees=placed_trees)
 
@@ -26,6 +27,7 @@ def main():
         sigma0 = sigma0,
         options={'verbose': -9})
 
+    g = []
     for i in range(N_trees-1):
         initial_conditions = []
         for _ in range(N_tries):
@@ -45,13 +47,18 @@ def main():
             if (objective_for_cma(x) < best_cost_value):
                 best_cost_value = objective_for_cma(x)
                 best_x = x
+        g.append(best_cost_value)
 
         print(i)
         print(best_x)
         print(objective_for_cma(best_x))
         placed_trees.append_tree(xt.ChristmasTree(best_x[0],best_x[1],best_x[2]*180/math.pi))
         placed_trees.get_solution().to_csv(f"results/{placed_trees.size}-tree-configuration.csv")
-        placed_trees.save_config_to_pdf(f"results/{placed_trees.size}-tree-configuration.pdf")
+        if (i) % 10 == 0:
+            placed_trees.save_config_to_pdf(f"results/{placed_trees.size}-tree-configuration.pdf")
+
+    data = {'n': range(2, N_trees+1), 'g': g}
+    pd.DataFrame(data).to_csv('results/g.csv', index=False)
 
 
 if __name__ == "__main__":
