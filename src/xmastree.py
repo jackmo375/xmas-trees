@@ -12,7 +12,7 @@ from shapely.ops import unary_union
 from shapely.strtree import STRtree
 from decimal import Decimal, getcontext
 
-COLLISION_BUFFER_SCALE = 1.06
+COLLISION_BUFFER_SCALE = 1.1
 
 pd.set_option('display.float_format', '{:.12f}'.format)
 getcontext().prec = 25
