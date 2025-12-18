@@ -147,3 +147,50 @@ def score(solution: pd.DataFrame, submission: pd.DataFrame, row_id_column_name: 
         total_score += group_score
 
     return float(total_score)
+
+
+def check_for_score_errors(submission):
+
+    # remove the leading 's' from submissions
+    data_cols = ['x', 'y', 'deg']
+    submission = submission.astype(str)
+    for c in data_cols:
+        if not submission[c].str.startswith('s').all():
+            raise ParticipantVisibleError(f'Value(s) in column {c} found without `s` prefix.')
+        submission[c] = submission[c].str[1:]
+
+    # enforce value limits
+    limit = 100
+    bad_x = (submission['x'].astype(float) < -limit).any() or \
+            (submission['x'].astype(float) > limit).any()
+    bad_y = (submission['y'].astype(float) < -limit).any() or \
+            (submission['y'].astype(float) > limit).any()
+    if bad_x or bad_y:
+        raise ParticipantVisibleError('x and/or y values outside the bounds of -100 to 100.')
+
+    # grouping puzzles to score
+    submission['tree_count_group'] = submission.index.str.split('_').str[0]
+
+    total_score = Decimal('0.0')
+    for group, df_group in submission.groupby('tree_count_group'):
+        num_trees = len(df_group)
+
+        # Create tree objects from the submission values
+        placed_trees = []
+        for _, row in df_group.iterrows():
+            placed_trees.append(ChristmasTree(row['x'], row['y'], row['deg']))
+
+        # Check for collisions using neighborhood search
+        all_polygons = [p.polygon for p in placed_trees]
+        r_tree = STRtree(all_polygons)
+
+        # Checking for collisions
+        for i, poly in enumerate(all_polygons):
+            indices = r_tree.query(poly)
+            for index in indices:
+                if index == i:  # don't check against self
+                    continue
+                if poly.intersects(all_polygons[index]) and not poly.touches(all_polygons[index]):
+                    raise ParticipantVisibleError(f'Overlapping trees in group {group}')
+
+    return(0)

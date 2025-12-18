@@ -12,6 +12,7 @@ from shapely.ops import unary_union
 from shapely.strtree import STRtree
 from decimal import Decimal, getcontext
 
+COLLISION_BUFFER_SCALE = 1.06
 
 pd.set_option('display.float_format', '{:.12f}'.format)
 getcontext().prec = 25
@@ -183,7 +184,7 @@ def objective(placed_trees, tree_to_place):
     return(get_side_length(placed_trees.trees, tree_to_place)**2)
 
 def overlap_constraint(placed_trees, tree_to_place):
-    rescale_value = 1.01
+    rescale_value = COLLISION_BUFFER_SCALE
     placed_polygons = [affinity.scale(p.polygon, rescale_value, rescale_value, origin=p.polygon.centroid) for p in placed_trees]
     candidate_poly = affinity.scale(tree_to_place.polygon, rescale_value, rescale_value, origin=tree_to_place.polygon.centroid)
     tree_index = STRtree(placed_polygons)
@@ -214,3 +215,26 @@ def generate_weighted_angle():
         angle = random.uniform(0, 2 * math.pi)
         if random.uniform(0, 1) < abs(math.sin(2 * angle)):
             return angle
+
+
+def get_trees_from_df(submission):
+    # remove the leading 's' from submissions
+    data_cols = ['x', 'y', 'deg']
+    submission = submission.astype(str)
+    for c in data_cols:
+        if not submission[c].str.startswith('s').all():
+            raise ParticipantVisibleError(f'Value(s) in column {c} found without `s` prefix.')
+        submission[c] = submission[c].str[1:]
+
+    # enforce value limits
+    limit = 100
+    bad_x = (submission['x'].astype(float) < -limit).any() or \
+            (submission['x'].astype(float) > limit).any()
+    bad_y = (submission['y'].astype(float) < -limit).any() or \
+            (submission['y'].astype(float) > limit).any()
+    if bad_x or bad_y:
+        raise ParticipantVisibleError('x and/or y values outside the bounds of -100 to 100.')
+    placed_trees = []
+    for _, row in submission.iterrows():
+        placed_trees.append(ChristmasTree(row['x'], row['y'], row['deg']))
+    return(ChristmasTrees(placed_trees))
